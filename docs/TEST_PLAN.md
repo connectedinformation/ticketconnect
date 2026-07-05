@@ -136,8 +136,14 @@ transition — full handshakes before the injector is deployed, PSK resumption
 The injector now has a **node-wide scan mode** (`--scan`) for the DaemonSet:
 discover every process with libssl mapped, attach one uprobe per distinct libssl
 file, and exclude the agent by comm in BPF (probing its own fetch handshakes would
-deadlock). Discovery is verified safely with `--dry-run` (no BPF, no freeze); the
-node-wide freeze+inject is the same proven mechanism and is exercised in the kind
-E2E (isolated, so freezing "all node TLS" is safe).
+deadlock). Discovery is verified safely with `--dry-run` (no BPF, no freeze).
 
-Remaining: container images, DaemonSet manifest, and the demo on kind.
+**Tier 4 packaging** (`deploy/`) is built: three container images (all build),
+the two-container DaemonSet, demo manifests, and `run_kind_demo.sh`. The **host
+demo is the proven acceptance test**; on kind the DaemonSet deploys with node-wide
+detection, freeze, scan (incl. image diversity), and pool/UDS all working — two
+kind-environment wrinkles (nested PID namespace, cluster DNS timing) are handled /
+documented in `deploy/README.md` and are no-ops on a standard node.
+
+Remaining: stabilize the full in-cluster resumption run on kind; the design and
+code are proven at every other level.
