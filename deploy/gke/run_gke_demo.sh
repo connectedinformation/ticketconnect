@@ -7,12 +7,12 @@
 #   ./run_gke_demo.sh clean    # delete the cluster (stop billing)
 #
 # Standard cluster (Autopilot forbids privileged/hostPID/BPF), Ubuntu nodes (BTF
-# for CO-RE). Dedicated project keeps the tlslane boundary crisp.
+# for CO-RE). Set PROJECT to your own GCP project.
 set -euo pipefail
 
 here="$(dirname "$(readlink -f "$0")")"
 root="$here/../.."
-PROJECT="${PROJECT:-ci-ticketconnect}"
+PROJECT="${PROJECT:?set PROJECT to your GCP project ID}"
 ZONE="${ZONE:-asia-east1-a}"
 CLUSTER="${CLUSTER:-tc-demo}"
 TAG="${TAG:-demo}"

@@ -5,9 +5,9 @@ discussion, and pull requests are all welcome.
 
 ## Ground rules
 
-- **The design is the source of truth.** ticketconnect is a clean-room
-  implementation built from [docs/DESIGN.md](docs/DESIGN.md). Extend the design
-  via an ADR (`docs/adr/NNNN-*.md`); don't silently re-architect.
+- **The design is the source of truth.** ticketconnect is built from
+  [docs/DESIGN.md](docs/DESIGN.md). Extend the design via an ADR
+  (`docs/adr/NNNN-*.md`); don't silently re-architect.
 - **Public-API-only injection is non-negotiable.** The injector must call only
   exported OpenSSL functions by resolved symbol address — never private struct
   offsets. This is what makes the memory-corruption bug class unrepresentable

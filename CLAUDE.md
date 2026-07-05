@@ -13,10 +13,8 @@ PQC-rooted PSK — off the data path. The substance is the off-path
 session-acquisition-and-injection **primitive**; stock OpenSSL 3.5 supplies the
 PQC for free, so PQC is the marquee use case, not the product.
 
-**Clean-room reimplementation.** Do NOT import code, docs, or git history from
-any prior tree (`~/Projects/ticketconnect-legacy`, `~/Projects/TicketConnect.0`).
-Rebuild from `docs/DESIGN.md`, which is the specification. Learn from the prior
-prototype; do not reuse its code.
+**The design is the source of truth.** Build from `docs/DESIGN.md`, which is the
+specification; the implementation derives from it.
 
 Full spec: [docs/DESIGN.md](docs/DESIGN.md).
 
@@ -42,17 +40,17 @@ injectability.
 - **Plane 2 — fronting (on-path). `gateway` + `frontdesk`** (deferred, gated):
   for `inject-none` peers only — `gateway` steers by ClientHello, `frontdesk`
   terminates a handshake to issue a ticket. Bounded to ticket issuance; packaged
-  as a Deployment/Service. `router`/`gateway`/`xdp_router`/`clienthello_router`
-  from the prior tree collapse into one `gateway` (they were 4 dataplane impls).
+  as a Deployment/Service. A ClientHello steerer is one role, not four
+  components — its dataplane (userspace proxy, sockmap, XDP) is an impl choice.
 
 Modes: **v1 = relay** (upstream mints the ticket; Plane 1, inject-one client;
 delivers resumption + attested PQC provenance). **Authority mode** (agent owns
 the STEK, mints tickets, embeds metadata, cert-free path) unlocks server-side
 injection and the fronting plane — deferred. Build order in DESIGN.md §12.
 
-Boundary: must **not** depend on the tlslane project's closed code; self-contained
-on stock OpenSSL 3.5. The on-path fronting plane is the closest brush with
-tlslane — keep it bounded and gated (re-check DESIGN.md §11 before investing).
+Boundary: self-contained on stock OpenSSL 3.5; do not couple to any external
+on-path/inline engine. The on-path fronting plane is the closest brush with that
+boundary — keep it bounded and gated (re-check DESIGN.md §11 before investing).
 
 ## Build
 

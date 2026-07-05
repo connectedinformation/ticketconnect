@@ -1,8 +1,6 @@
 # TicketConnect — Design (v1)
 
-> Working name. Clean-room reimplementation; **no code, docs, or git history imported from the
-> pre-2026-04-10 tree.** This document is the specification; the implementation derives from it,
-> not from the prior source.
+> Working name. This document is the specification; the implementation derives from it.
 
 ## 1. Thesis
 
@@ -69,7 +67,8 @@ inject-none.
 ## 4. Non-goals (v1)
 
 - Not a general on-path traffic proxy or service mesh for arbitrary data-plane interception (that is
-  TLS Lane / Istio — do not re-invent). The **fronting plane** (§5.3) terminates a handshake *only*
+  an inline proxy / service-mesh problem, e.g. Istio — do not re-invent). The **fronting plane**
+  (§5.3) terminates a handshake *only*
   to issue a ticket for an un-injectable peer; it is a bounded ticket issuer, not a traffic splicer,
   and its build is gated behind the off-path core.
 - OpenSSL / libssl targets only. BoringSSL, Go `crypto/tls`, rustls, NSS, Schannel are out of scope.
@@ -147,8 +146,8 @@ cannot `ptrace`. Here the material cannot be injected, so it must be *served*:
   backend (resumption); offers PQC groups but no ticket → `frontdesk`; neither → legacy backend
   (classical) **and emits an event** (no silent downgrade). Its dataplane is an implementation
   choice — userspace proxy first, sockmap/XDP as later acceleration — **not** four separate
-  components. (The prior tree's `router`/`gateway`/`clienthello_router`/`xdp_router` were four
-  dataplane impls of this one role; they collapse into `gateway`. See ADR-0001.)
+  components. A ClientHello steerer is one role; splitting it per dataplane layer is a defect to
+  avoid. See ADR-0001.
 - **`frontdesk`** — a real TLS 1.3 endpoint that terminates the un-injectable peer's handshake and
   issues a ticket sealed under the shared STEK; the peer then resumes against a backend that holds
   the same STEK (installed off-path by the injector, or pre-shared).
@@ -280,14 +279,13 @@ bearer credential). Deferred past v1; documented so v1 doesn't paint into a corn
   verified targets*, fail-closed and fail-open, so the worst case is "no upgrade," not "corrupted
   process." That property is what earns the intrusiveness.
 
-## 11. Boundary vs TLS Lane (hard constraint)
+## 11. Off-path boundary (hard constraint)
 
-The OSS repo **must not** import TLS Lane's closed code (PQC/handshake/codepoint/parser internals).
-`agent` does its PQC handshake on **stock OpenSSL 3.5** (`SSL_connect` + `SSL_get1_session`), fully
-self-contained. This keeps TLS Lane's core closed and the two projects cleanly separable. The
-on-path fronting plane (§5.3) is the closest brush with TLS Lane's territory; it stays bounded (it
-issues tickets, it does not splice arbitrary traffic) and its build is gated — re-check this
-boundary before investing in it.
+ticketconnect stays **off the data path**. `agent` does its PQC handshake on **stock OpenSSL 3.5**
+(`SSL_connect` + `SSL_get1_session`), fully self-contained — it depends on no inline/on-path engine.
+The on-path fronting plane (§5.3) is the closest brush with an on-path posture; it stays bounded (it
+issues tickets, it does not splice arbitrary traffic) and its build is gated — re-check this boundary
+before investing in it.
 
 ## 12. Build order (phased)
 
@@ -302,7 +300,7 @@ boundary before investing in it.
 
 > Sequencing/gating: v1 (step 1) ships first and demand drives the rest. Step 2 (server-side +
 > authority) is the sanctioned next capability (off-path, security-loaded); step 3 (on-path fronting)
-> is gated behind a deliberate strategic decision on the TLS Lane boundary (§11), not roadmap inertia.
+> is gated behind a deliberate strategic decision on the off-path boundary (§11), not roadmap inertia.
 > See [`adr/0002-roadmap-ship-first-server-support-gate-fronting.md`](adr/0002-roadmap-ship-first-server-support-gate-fronting.md).
 
 ## 13. v1 acceptance demo (definition of done)

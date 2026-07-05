@@ -20,17 +20,17 @@ build order:
   live connections to serve un-injectable (external) peers.
 
 These sit on opposite sides of the project's defining boundary. ticketconnect is
-the **off-path** OSS artifact; TLS Lane is the **on-path** closed engine (see
-[[project_monetization_thesis]], [[project_strategy_phase]], DESIGN §11). Step 2
-stays off-path. Step 3 is on-path — the closest brush with TLS Lane's territory.
+an **off-path** primitive; a separate **on-path** inline engine is a different
+posture (DESIGN §11). Step 2 stays off-path. Step 3 is on-path — the closest brush
+with that boundary.
 
 ## Decision
 
 1. **Ship v1 first; let real demand drive further capability.** ticketconnect's
-   role is a credibility/funnel artifact; it is served by being in the world
-   generating signal. Both candidates are real investments better justified by
-   pull than by speculation (consistent with "measure before you build" and the
-   cut of the prior tree's speculative sprawl).
+   role is a credibility artifact; it is served by being in the world generating
+   signal. Both candidates are real investments better justified by pull than by
+   speculation (consistent with "measure before you build" — avoid speculative
+   sprawl).
 
 2. **Server-side injection + authority mode is the sanctioned next capability**
    *when* we build more. It is off-path (on-brand), and it is mostly composition
@@ -42,29 +42,28 @@ stays off-path. Step 3 is on-path — the closest brush with TLS Lane's territor
    jewel and the ticket a bearer credential (DESIGN §10, §8.2).
 
 3. **The on-path fronting plane (Plane 2) is explicitly gated.** It is not a
-   technical "next increment" but a **strategic decision** about whether the open
-   project may hold on-path capability that overlaps TLS Lane. It requires a
-   deliberate business decision and a re-check of DESIGN §11 *before* any code.
+   technical "next increment" but a **strategic decision** about whether the
+   project should hold on-path capability at all. It requires a deliberate
+   decision and a re-check of DESIGN §11 *before* any code.
    The trigger is a real un-injectable-peer use case in hand, not roadmap inertia.
 
 ## Consequences
 
 - The published v1 stays tightly scoped and honest; scope grows on evidence.
 - Step 2, when built, extends the off-path primitive to its full symmetric
-  reach without crossing the TLS Lane boundary — but raises the security bar
+  reach without crossing the off-path boundary — but raises the security bar
   (shared-STEK handling, bearer-token ticket semantics).
-- Step 3 stays off the default path, preserving the clean "off-path OSS vs
-  on-path commercial" separation and ticketconnect's differentiation. The cost is
-  that un-injectable (north-south/external) peers remain out of scope until that
-  call is made.
+- Step 3 stays off the default path, preserving the off-path posture and
+  ticketconnect's differentiation. The cost is that un-injectable
+  (north-south/external) peers remain out of scope until that call is made.
 - Demand signals map to action: "protect my legacy servers / cert-free east-west"
-  → build Step 2; "front my external clients" → open the on-path/TLS-Lane
-  boundary conversation.
+  → build Step 2; "front my external clients" → open the on-path boundary
+  conversation.
 
 ## Alternatives considered
 
 - **Build Step 3 next (fronting).** Rejected as a default: it crosses the
-  off-path/on-path boundary that separates ticketconnect from TLS Lane, and enters
+  off-path/on-path boundary that defines ticketconnect, and enters
   a crowded, liability-heavy space — a decision to make deliberately, not by
   roadmap momentum.
 - **Build Step 2 immediately, before shipping.** Deferred: the mechanism is ready,

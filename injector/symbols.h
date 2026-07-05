@@ -4,8 +4,9 @@
 // SSL_set_session, SSL_SESSION_free, mmap, ...) is in the library's .dynsym — the
 // dynamic symbol table, which is present even in stripped production builds. So
 // resolution is fully runtime: load bias from /proc/<pid>/maps + st_value from
-// .dynsym, no pre-computed offset database (contrast the prior tree's SHA256-keyed
-// signature DB, which existed to carry private struct offsets we no longer touch).
+// .dynsym, with no pre-computed offset database — that only exists for
+// offset-based injection, keyed by binary hash to carry private struct offsets,
+// which public-API-only injection never touches.
 //
 // Container-aware: the library is read through /proc/<pid>/root so we see the
 // exact file the target has mapped, in its mount namespace.

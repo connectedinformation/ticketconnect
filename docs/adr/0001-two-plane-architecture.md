@@ -4,7 +4,7 @@ Status: Accepted (2026-07-05)
 
 ## Context
 
-The initial clean-room design kept a single component, `ticket-agent`: it sources a session by an
+The initial design kept a single component, `ticket-agent`: it sources a session by an
 outbound handshake and the injector installs that session into a local **client**, which then
 resumes. This is **client-side only**, and it structurally fails the two cases the project actually
 targets:
@@ -19,12 +19,11 @@ always-resume**: make *both* endpoints do TLS 1.3 PSK resumption, driven by eith
 "no/needless certificate." Resumption is the universal substrate because it removes both the wire
 key-exchange and the certificate from the resumed path.
 
-The prior prototype answered the server side with a tier of components — `ticket_frontdesk`,
-`frontdesk_router`, `clienthello_router`, `xdp_router`, `ticket_gateway` — that terminate or steer
-**live** TLS connections. That tier is on the data path, which (a) re-invents TLS Lane's closed
-inline engine and (b) was an explicit non-goal. But the review also observed the tier existed only
-because the frontdesk served **external, un-injectable** clients (browsers); when both endpoints are
-processes we control, injection reaches the server too, off-path.
+The server side could be answered by an on-path tier — a `frontdesk` that terminates handshakes plus
+a `gateway`/router that steers **live** TLS connections. That tier is on the data path, which (a)
+re-invents an inline proxy and (b) was an explicit non-goal. But such a tier is only needed because a
+frontdesk serves **external, un-injectable** clients (browsers); when both endpoints are processes we
+control, injection reaches the server too, off-path.
 
 The deciding variable is **injectability** (can we `ptrace` the endpoint?), not traffic direction
 (east-west / north-south), which were being conflated.
@@ -57,8 +56,8 @@ Two sub-decisions:
 - **Collapse `router`/`gateway`/`clienthello_router`/`xdp_router` into one `gateway`.** They were
   four dataplane implementations (userspace `splice` → sockmap → XDP) of one role: steer by
   ClientHello. Dataplane layer is an implementation choice (start userspace), not four components.
-  The prior fourfold split (and its 4 divergent ClientHello parsers / 3 PQC-codepoint tables) was a
-  flagged defect; do not reproduce it.
+  A fourfold split (with divergent ClientHello parsers and PQC-codepoint tables) is a defect to
+  avoid; do not reproduce it.
 - **Packaging follows the planes:** off-path plane = DaemonSet (`agent` unprivileged + `injector`
   privileged); on-path plane = Deployment/Service (network endpoints, no `ptrace` privilege).
 
@@ -77,9 +76,9 @@ Two sub-decisions:
 - **Server injection is not risk-symmetric with client injection**: a STEK is long-lived, shared,
   and installed into a process serving live traffic; it will accept any ticket sealed under it. Treat
   with authority-mode STEK cautions, not relay defaults.
-- **Plane 2 is the closest brush with TLS Lane's closed on-path engine.** It is bounded (issues
-  tickets, does not splice arbitrary traffic), but the boundary is thin; re-check DESIGN.md §11 and
-  the strategy/monetization notes before investing in it.
+- **Plane 2 is the closest brush with an on-path/inline posture.** It is bounded (issues tickets,
+  does not splice arbitrary traffic), but the boundary is thin; re-check DESIGN.md §11 before
+  investing in it.
 - Authority mode concentrates trust in a forgeable shared STEK (larger blast radius than per-server
   keys) — internal traffic only; state plainly, never hide.
 
@@ -92,7 +91,7 @@ Two sub-decisions:
 
 - **`agent`-only (status quo ante).** Rejected: client-side only; cannot serve a non-PQC or
   certificate-free server.
-- **On-path fronting as the primary mechanism.** Rejected: re-invents TLS Lane, forfeits the
+- **On-path fronting as the primary mechanism.** Rejected: re-invents an inline proxy, forfeits the
   off-path differentiator, and is unnecessary whenever the endpoint is injectable.
 - **Keep `router` and `gateway` as distinct components.** Rejected: same role at different dataplane
-  layers; distinctness reproduces the prior duplication with no benefit.
+  layers; distinctness reproduces the duplication with no benefit.

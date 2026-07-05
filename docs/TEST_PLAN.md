@@ -2,8 +2,8 @@
 
 Companion to [DESIGN.md](DESIGN.md). Tests are organized by **blast radius**, and
 the security invariants (DESIGN §10) are exercised as **negative paths** — the
-prior prototype's worst failures were silent downgrade, a false integrity claim,
-memory corruption, and a threading race, all of which a happy-path suite misses.
+failure modes that matter here are silent downgrade, a false integrity claim,
+memory corruption, and threading races, all of which a happy-path suite misses.
 
 ## Two principles
 
