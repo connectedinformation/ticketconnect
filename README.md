@@ -1,6 +1,9 @@
 # ticketconnect
 
-[![CI](https://github.com/connectedinformation/ticketconnect/actions/workflows/ci.yml/badge.svg)](https://github.com/connectedinformation/ticketconnect/actions/workflows/ci.yml)
+[![CI](https://github.com/connectedinformation/ticketconnect/actions/workflows/ci.yml/badge.svg)](https://github.com/connectedinformation/ticketconnect/actions/workflows/ci.yml) [![license](https://img.shields.io/badge/license-MIT%20%2B%20GPL-blue.svg)](LICENSE) [![status](https://img.shields.io/badge/status-experimental-orange.svg)](#status--maturity)
+
+> **Post-quantum protection for legacy TLS clients you can't change — installed
+> off the data path by an eBPF + ptrace node agent, with zero application change.**
 
 Give a legacy TLS endpoint post-quantum key material — or a certificate-free
 resumed path — it cannot negotiate itself, without changing its code, its image,

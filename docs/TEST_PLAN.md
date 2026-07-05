@@ -151,5 +151,6 @@ X25519MLKEM768 for **111 consecutive connections** — the full detect → freez
 install → resume flow, end to end, in a real cluster. kind's nested PID namespace
 is confirmed as the only blocker there and is absent on a standard node.
 
-Remaining polish: dedup node-wide uprobes by a container-stable file identity (the
-per-container `st_dev` difference causes a benign redundant, fail-closed inject).
+Node-wide uprobes are deduped by a container-stable `name_to_handle_at` file
+handle (not `st_dev`+inode), so a libssl shared across pods is probed exactly once
+(no benign double-inject).

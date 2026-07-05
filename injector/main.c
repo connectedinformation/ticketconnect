@@ -16,6 +16,7 @@
 #define _GNU_SOURCE
 
 #include <dirent.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -43,23 +44,46 @@ struct daemon_ctx {
     const char* dest;
 };
 
-// Distinct libssl files we have attached to (dedup by device+inode across pods).
+// Distinct libssl files we have attached to. Dedup by a container-stable identity:
+// overlay mounts present the same underlying libssl with different st_dev, so
+// inode dedup would miss cross-container duplicates and attach redundant uprobes
+// (a benign but wasteful double-inject). name_to_handle_at() identifies the real
+// underlying file across overlay mounts; we fall back to dev:ino if unsupported.
 struct attached {
-    unsigned long dev;
-    unsigned long ino;
+    char key[300];
     struct bpf_link* link;
 };
-static struct attached g_att[256];
+static struct attached g_att[512];
 static int g_natt = 0;
 
-static int seen(unsigned long dev, unsigned long ino)
+static int seen(const char* key)
 {
     for (int i = 0; i < g_natt; ++i) {
-        if (g_att[i].dev == dev && g_att[i].ino == ino) {
+        if (strcmp(g_att[i].key, key) == 0) {
             return 1;
         }
     }
     return 0;
+}
+
+static void file_key(const char* path, const struct stat* st, char* out, size_t cap)
+{
+    struct {
+        struct file_handle fh;
+        unsigned char pad[128];
+    } h;
+    h.fh.handle_bytes = sizeof(h.pad);
+    int mount_id = 0;
+    if (name_to_handle_at(AT_FDCWD, path, &h.fh, &mount_id, 0) == 0) {
+        // h.pad backs the flexible f_handle[]; read through it to avoid a
+        // zero-length-array bounds warning.
+        int n = snprintf(out, cap, "h%d:", h.fh.handle_type);
+        for (unsigned i = 0; i < h.fh.handle_bytes && i < sizeof(h.pad) && n < (int)cap - 3; ++i) {
+            n += snprintf(out + n, cap - (size_t)n, "%02x", h.pad[i]);
+        }
+        return;
+    }
+    snprintf(out, cap, "i%lx:%lx", (unsigned long)st->st_dev, (unsigned long)st->st_ino);
 }
 
 static int find_libssl_for_pid(pid_t pid, char* out, size_t cap)
@@ -129,24 +153,27 @@ static int scan(struct bpf_program* prog, pid_t self, int dry)
             }
             use = path;
         }
-        if (seen((unsigned long)st.st_dev, (unsigned long)st.st_ino)) {
+        char key[300];
+        file_key(use, &st, key, sizeof(key));
+        if (seen(key)) {
             continue;
         }
 
         char comm[64];
         read_comm((pid_t)pid, comm, sizeof(comm));
         if (dry) {
-            printf("would attach: %s (inode %lu, first seen via pid %ld comm=%s)\n", use,
-                   (unsigned long)st.st_ino, pid, comm);
-            g_att[g_natt++] =
-                (struct attached){(unsigned long)st.st_dev, (unsigned long)st.st_ino, NULL};
+            printf("would attach: %s (first seen via pid %ld comm=%s)\n", use, pid, comm);
+            snprintf(g_att[g_natt].key, sizeof(g_att[g_natt].key), "%s", key);
+            g_att[g_natt].link = NULL;
+            ++g_natt;
         }
         else {
             LIBBPF_OPTS(bpf_uprobe_opts, uo, .func_name = "SSL_connect");
             struct bpf_link* link = bpf_program__attach_uprobe_opts(prog, -1, use, 0, &uo);
             if (link) {
-                g_att[g_natt++] =
-                    (struct attached){(unsigned long)st.st_dev, (unsigned long)st.st_ino, link};
+                snprintf(g_att[g_natt].key, sizeof(g_att[g_natt].key), "%s", key);
+                g_att[g_natt].link = link;
+                ++g_natt;
                 fprintf(stderr, "attached node-wide uprobe: %s\n", use);
             }
         }

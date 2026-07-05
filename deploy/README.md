@@ -46,11 +46,11 @@ consecutive connections** — the DESIGN §13 definition of done, in a real clus
 with no change to the client. The **host demo (`../demo/run_host_demo.sh`) is the
 local acceptance test** (same result, no cloud).
 
-*Known refinement:* the node-wide scanner dedups libssl by device+inode, but per-
-container overlay mounts can present the same file with different `st_dev`, so a
-client can be matched by more than one uprobe — the redundant inject fails
-harmlessly (fail-closed, client already resumed). Dedup by a container-stable
-identity would remove the extra ptrace work.
+*Container-stable dedup:* the node-wide scanner dedups libssl by a
+`name_to_handle_at` file handle — which identifies the real underlying file across
+overlay mounts — rather than `st_dev`+inode, so a libssl shared across pods is
+probed exactly once. (Earlier, per-container `st_dev` differences could cause a
+benign, fail-closed double-inject; this removes the redundant ptrace work.)
 
 On **kind**, the DaemonSet deploys and node-wide detection, the SIGSTOP freeze, the
 scanner (incl. libssl image diversity), and the pool/UDS all work, but two
