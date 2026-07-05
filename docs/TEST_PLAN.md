@@ -145,5 +145,11 @@ detection, freeze, scan (incl. image diversity), and pool/UDS all working — tw
 kind-environment wrinkles (nested PID namespace, cluster DNS timing) are handled /
 documented in `deploy/README.md` and are no-ops on a standard node.
 
-Remaining: stabilize the full in-cluster resumption run on kind; the design and
-code are proven at every other level.
+**Proven on real Kubernetes:** `deploy/gke/run_gke_demo.sh` ran the DaemonSet on a
+GKE Standard node (Ubuntu, kernel 6.8) and an unmodified looping client resumed on
+X25519MLKEM768 for **111 consecutive connections** — the full detect → freeze →
+install → resume flow, end to end, in a real cluster. kind's nested PID namespace
+is confirmed as the only blocker there and is absent on a standard node.
+
+Remaining polish: dedup node-wide uprobes by a container-stable file identity (the
+per-container `st_dev` difference causes a benign redundant, fail-closed inject).

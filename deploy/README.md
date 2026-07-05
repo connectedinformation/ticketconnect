@@ -38,12 +38,24 @@ DESIGN §13 definition of done.
 
 ### Status
 
-The **host demo (`../demo/run_host_demo.sh`) is the proven acceptance test** — the
-real agent + injector daemons drive an unmodified looping client from `full` to
-`RESUMED`. On kind, the DaemonSet deploys and rolls out, and node-wide detection,
-the SIGSTOP freeze, the process scanner (incl. libssl image diversity), and the
-agent's pool/UDS all work in-cluster. Two kind-*environment* wrinkles are still
-being ironed out and are **not** ticketconnect defects:
+**Proven on real Kubernetes (GKE).** `gke/run_gke_demo.sh` provisions a GKE
+Standard cluster (Ubuntu nodes, kernel 6.8) in a dedicated project and runs the
+DaemonSet next to an unmodified looping client: after DNS warmup and a single
+cold-pool `full` handshake, the client resumed on **X25519MLKEM768 for 111
+consecutive connections** — the DESIGN §13 definition of done, in a real cluster,
+with no change to the client. The **host demo (`../demo/run_host_demo.sh`) is the
+local acceptance test** (same result, no cloud).
+
+*Known refinement:* the node-wide scanner dedups libssl by device+inode, but per-
+container overlay mounts can present the same file with different `st_dev`, so a
+client can be matched by more than one uprobe — the redundant inject fails
+harmlessly (fail-closed, client already resumed). Dedup by a container-stable
+identity would remove the extra ptrace work.
+
+On **kind**, the DaemonSet deploys and node-wide detection, the SIGSTOP freeze, the
+scanner (incl. libssl image diversity), and the pool/UDS all work, but two
+kind-*environment* wrinkles remain — **not** ticketconnect defects, and confirmed
+absent on a standard node:
 
 - **Nested PID namespaces.** kind nests the node in its own PID namespace, so the
   eBPF event pid (kernel root ns) and the injector's `hostPID` view (node ns)
