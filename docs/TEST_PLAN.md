@@ -111,5 +111,11 @@ Tier 3 is up through the real install (`make -C injector check`, all unprivilege
   (remote `mmap` → `process_vm_writev` → `d2i_SSL_SESSION` → `SSL_set_session` →
   `SSL_SESSION_free`), and the victim's `SSL_connect` resumes (`SSL_session_reused`).
 
-Remaining: the eBPF `SSL_connect` uprobe (to supply the live `SSL*` instead of the
-test's hand-off), the fail-closed suite (Tier 3 negatives), and Tier 4 (kind E2E).
+- `bpf/test/test_detect` — the **eBPF `SSL_connect` uprobe**: attach CO-RE, fork a
+  real libssl victim, and confirm the ring-buffer event carries the victim's pid
+  and the exact `SSL*` it passed — the kernel supplies what the install test used
+  to hand off cooperatively. Needs BPF privilege (`make -C bpf check` runs it
+  under sudo).
+
+Remaining: wire detect → freeze → install into one uncooperative flow, the
+fail-closed suite (Tier 3 negatives), and Tier 4 (kind E2E).

@@ -3,6 +3,7 @@
 *.a
 *.so
 *.bpf.o
+*.skel.h
 /build/
 **/build/
 vmlinux.h
