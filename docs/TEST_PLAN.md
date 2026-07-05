@@ -117,5 +117,10 @@ Tier 3 is up through the real install (`make -C injector check`, all unprivilege
   to hand off cooperatively. Needs BPF privilege (`make -C bpf check` runs it
   under sudo).
 
-Remaining: wire detect → freeze → install into one uncooperative flow, the
-fail-closed suite (Tier 3 negatives), and Tier 4 (kind E2E).
+- `injector/test/test_wireup` — the **capstone**, fully uncooperative: the uprobe
+  (freeze armed) SIGSTOPs the victim at `SSL_connect` and hands its `SSL*` up from
+  the kernel; the injector installs a session over ptrace; `SIGCONT` releases it;
+  its *own* `SSL_connect` resumes on the PSK. The victim never pauses at the call
+  or hands off its pointer. Needs BPF privilege (`make -C injector check-wireup`).
+
+Remaining: the fail-closed suite (Tier 3 negatives) and Tier 4 (kind E2E).

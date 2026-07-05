@@ -11,6 +11,13 @@
 
 #include "event.h"
 
+#define SIGSTOP 19
+
+// Opt-in freeze (DESIGN §7 step 1): when set (before load), the probed thread is
+// SIGSTOP'd at SSL_connect entry so the injector can install a session before the
+// handshake proceeds. Left 0 for detection-only use.
+const volatile int freeze = 0;
+
 struct {
     __uint(type, BPF_MAP_TYPE_RINGBUF);
     __uint(max_entries, 1 << 16);
@@ -28,6 +35,10 @@ int BPF_UPROBE(on_ssl_connect, void* ssl)
     e->tid = (__u32)id;
     e->ssl = (__u64)ssl;
     bpf_ringbuf_submit(e, 0);
+
+    if (freeze) {
+        bpf_send_signal(SIGSTOP); // hold the thread at SSL_connect entry
+    }
     return 0;
 }
 

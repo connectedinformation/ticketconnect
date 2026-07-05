@@ -112,6 +112,7 @@ unsigned long remote_call(pid_t pid, unsigned long func, unsigned long a0, unsig
         goto restore;
     }
 
+    int spurious = 0;
     for (;;) {
         if (ptrace(PTRACE_CONT, pid, 0, 0) < 0) {
             perror("CONT");
@@ -129,9 +130,14 @@ unsigned long remote_call(pid_t pid, unsigned long func, unsigned long a0, unsig
         if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGTRAP) {
             break; // hit our return trap — the call has returned
         }
-        // An unrelated signal: nothing to deliver into a hijacked context.
-        fprintf(stderr, "unexpected stop signal %d during remote call\n", WSTOPSIG(status));
-        goto restore;
+        // A group-stop (e.g. the pending SIGSTOP the eBPF uprobe used to freeze
+        // the thread) or another signal-stop: re-continue without delivering it
+        // and keep waiting for our return trap. Bounded so a genuine fault can't
+        // spin forever.
+        if (++spurious > 16) {
+            fprintf(stderr, "remote call stuck on signal %d\n", WSTOPSIG(status));
+            goto restore;
+        }
     }
 
     struct user_regs_struct after;
