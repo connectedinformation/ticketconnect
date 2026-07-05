@@ -5,11 +5,17 @@ kind acceptance demo.
 
 ## Images
 
+Published to GHCR (public, pull with no auth):
+
 | Image | Dockerfile | Contents |
 |---|---|---|
-| `ticketconnect/agent` | `Dockerfile.agent` | `ticket-agent` (unprivileged authority) |
-| `ticketconnect/injector` | `Dockerfile.injector` | `injector` (eBPF + ptrace; CO-RE, needs node BTF) |
-| `ticketconnect/demo` | `Dockerfile.demo` | PQC `s_server` + the looping `loop_client` |
+| `ghcr.io/connectedinformation/ticketconnect-agent` | `Dockerfile.agent` | `ticket-agent` (unprivileged authority) |
+| `ghcr.io/connectedinformation/ticketconnect-injector` | `Dockerfile.injector` | `injector` (eBPF + ptrace; CO-RE, needs node BTF) |
+| `ghcr.io/connectedinformation/ticketconnect-demo` | `Dockerfile.demo` | PQC `s_server` + the looping `loop_client` |
+
+```
+docker pull ghcr.io/connectedinformation/ticketconnect-injector:v0.1.0
+```
 
 The injector image compiles the BPF object against a pre-generated `bpf/vmlinux.h`
 (run `make -C bpf vmlinux.h` first) and relocates at load time against the node's
@@ -17,10 +23,13 @@ own BTF — so one image runs across kernels.
 
 ## Manifests
 
-- `k8s/daemonset.yaml` — the product: namespace + the two-container DaemonSet.
-  `hostPID: true` so the injector can see and ptrace processes node-wide; the
-  injector container is `privileged` (CAP_BPF / CAP_PERFMON / CAP_SYS_PTRACE); the
-  agent is unprivileged. They share the node-local UDS through an `emptyDir`.
+- `k8s/daemonset.yaml` — the product: namespace + the two-container DaemonSet,
+  referencing the published `:v0.1.0` images. `hostPID: true` so the injector can
+  see and ptrace processes node-wide; the injector container is `privileged`
+  (CAP_BPF / CAP_PERFMON / CAP_SYS_PTRACE); the agent is unprivileged. They share
+  the node-local UDS through an `emptyDir`. Apply directly with `kubectl apply -f`,
+  or use the demo scripts, which rewrite the refs to locally-built (`kind`) or
+  Artifact Registry (`gke`) images.
 - `k8s/demo.yaml` — a single-replica PQC server (one STEK, so tickets resume) and
   an unmodified looping client. Neither is part of ticketconnect.
 

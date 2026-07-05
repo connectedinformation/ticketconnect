@@ -28,9 +28,14 @@ kind get clusters 2>/dev/null | grep -qx "$cluster" || kind create cluster --con
 echo "== load images into the node =="
 kind load docker-image --name "$cluster" ticketconnect/agent:dev ticketconnect/injector:dev ticketconnect/demo:dev
 
-echo "== deploy =="
-kubectl apply -f "$here/k8s/daemonset.yaml"
-kubectl apply -f "$here/k8s/demo.yaml"
+echo "== deploy (rewrite the published image refs to the locally-built :dev) =="
+tmp="$(mktemp -d)"
+sub='s#ghcr.io/connectedinformation/ticketconnect-\(agent\|injector\|demo\):v0.1.0#ticketconnect/\1:dev#'
+sed "$sub" "$here/k8s/daemonset.yaml" > "$tmp/daemonset.yaml"
+sed "$sub" "$here/k8s/demo.yaml" > "$tmp/demo.yaml"
+kubectl apply -f "$tmp/daemonset.yaml"
+kubectl apply -f "$tmp/demo.yaml"
+rm -rf "$tmp"
 
 echo "== wait for rollout =="
 kubectl -n ticketconnect rollout status ds/ticketconnect --timeout=120s

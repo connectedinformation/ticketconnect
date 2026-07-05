@@ -22,7 +22,7 @@ spec:
       hostPID: true            # the injector must see & ptrace processes node-wide
       containers:
         - name: ticket-agent   # unprivileged authority
-          image: ticketconnect/agent:dev
+          image: ghcr.io/connectedinformation/ticketconnect-agent:v0.1.0
           imagePullPolicy: IfNotPresent
           args:
             - "serve"
@@ -37,7 +37,7 @@ spec:
             allowPrivilegeEscalation: false
             runAsNonRoot: false
         - name: injector       # privileged action arm
-          image: ticketconnect/injector:dev
+          image: ghcr.io/connectedinformation/ticketconnect-injector:v0.1.0
           imagePullPolicy: IfNotPresent
           args:
             - "--agent"

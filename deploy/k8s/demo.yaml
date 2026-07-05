@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: server
-          image: ticketconnect/demo:dev
+          image: ghcr.io/connectedinformation/ticketconnect-demo:v0.1.0
           imagePullPolicy: IfNotPresent
           command: ["/usr/local/bin/demo-server"]
           env:
@@ -48,7 +48,7 @@ spec:
     spec:
       containers:
         - name: client
-          image: ticketconnect/demo:dev
+          image: ghcr.io/connectedinformation/ticketconnect-demo:v0.1.0
           imagePullPolicy: IfNotPresent
           # An unmodified, already-running looping TLS client. Session cache is
           # off, so any RESUMED line is the injector's doing.

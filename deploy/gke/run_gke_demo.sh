@@ -46,9 +46,9 @@ gcloud container clusters get-credentials "$CLUSTER" --project "$PROJECT" --zone
 
 echo "== deploy (AR images) =="
 tmp="$(mktemp -d)"
-sed "s#ticketconnect/\(agent\|injector\|demo\):dev#$AR/\1:$TAG#; s#IfNotPresent#Always#" \
+sed "s#ghcr.io/connectedinformation/ticketconnect-\(agent\|injector\|demo\):v0.1.0#$AR/\1:$TAG#; s#IfNotPresent#Always#" \
     "$here/../k8s/daemonset.yaml" > "$tmp/daemonset.yaml"
-sed "s#ticketconnect/\(agent\|injector\|demo\):dev#$AR/\1:$TAG#; s#IfNotPresent#Always#" \
+sed "s#ghcr.io/connectedinformation/ticketconnect-\(agent\|injector\|demo\):v0.1.0#$AR/\1:$TAG#; s#IfNotPresent#Always#" \
     "$here/../k8s/demo.yaml" > "$tmp/demo.yaml"
 kubectl apply -f "$tmp/daemonset.yaml"
 kubectl apply -f "$tmp/demo.yaml"
