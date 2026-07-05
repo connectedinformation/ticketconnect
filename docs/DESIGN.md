@@ -300,6 +300,11 @@ boundary before investing in it.
 4. **Cluster-wide pooling** — only with a real, measured benchmark (the prior "100x" numbers were
    modeled with nothing deployed). Slots in as a tier-2 cache behind the per-node pool (§5.1).
 
+> Sequencing/gating: v1 (step 1) ships first and demand drives the rest. Step 2 (server-side +
+> authority) is the sanctioned next capability (off-path, security-loaded); step 3 (on-path fronting)
+> is gated behind a deliberate strategic decision on the TLS Lane boundary (§11), not roadmap inertia.
+> See [`adr/0002-roadmap-ship-first-server-support-gate-fronting.md`](adr/0002-roadmap-ship-first-server-support-gate-fronting.md).
+
 ## 13. v1 acceptance demo (definition of done)
 
 On a single node (kind or a VM), exercising **step 1 of §12** (Plane 1, inject-one client, relay):
