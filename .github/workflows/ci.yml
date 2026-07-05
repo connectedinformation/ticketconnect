@@ -47,23 +47,10 @@ jobs:
       - name: Injector tests (remote-call, symbols, fail-closed, real install)
         run: make -C injector check
 
-  # eBPF load + uprobe detection. BPF in hosted CI is environment-sensitive
-  # (BTF, privilege), so this is best-effort and does not block the build.
-  ebpf:
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    container:
-      image: fedora:43
-      options: --privileged
-    steps:
-      - name: Install toolchain
-        run: |
-          dnf -y install git gcc make clang bpftool libbpf-devel \
-            openssl openssl-devel elfutils-libelf-devel pkgconf-pkg-config sudo
-      - uses: actions/checkout@v4
-      - name: Build BPF + detection loader
-        run: |
-          make -C bpf vmlinux.h
-          make -C bpf test/test_detect
-      - name: Detection test (uprobe on SSL_connect)
-        run: ./bpf/test/test_detect
+      # The eBPF object is compiled in "Build all components" above, so a BPF
+      # build break still fails CI. The eBPF/ptrace *runtime* tests (uprobe
+      # detection, the wire-up, the host demo) need a real BPF-capable node —
+      # GitHub-hosted runners don't deliver uprobe events even in a privileged
+      # container — so they are validated locally (`make -C bpf check`,
+      # `make -C injector check-wireup`, `demo/run_host_demo.sh`) and on a real
+      # node (`deploy/gke/run_gke_demo.sh`), not in hosted CI.
