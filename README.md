@@ -19,6 +19,8 @@ not the cryptography: stock OpenSSL 3.5 supplies X25519MLKEM768 for free, and
 once a session exists the connection is ordinary TLS 1.3 PSK resumption. PQC is
 the marquee use case, not the product.
 
+**Use cases & honest scope:** [docs/USE_CASES.md](docs/USE_CASES.md).
+
 ## How it works
 
 The primitive is **symmetric** — the same machinery installs a session into a
