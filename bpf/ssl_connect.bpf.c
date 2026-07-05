@@ -23,6 +23,13 @@ const volatile int freeze = 0;
 // the injector waits on it would deadlock. Exclude by comm (set before load).
 const volatile char exclude_comm[16] = {0};
 
+// Report the pid in the injector's OWN pid namespace, not the kernel root ns, so
+// /proc and ptrace line up when the injector runs in a nested pid namespace (e.g.
+// kind, where hostPID reaches only the node's ns). Set to the injector's
+// /proc/self/ns/pid (dev, ino) before load; 0 means "use the root ns".
+const volatile __u64 target_pidns_dev = 0;
+const volatile __u64 target_pidns_ino = 0;
+
 static __always_inline int excluded(void)
 {
     if (exclude_comm[0] == 0) {
@@ -60,6 +67,13 @@ int BPF_UPROBE(on_ssl_connect, void* ssl)
     __u64 id = bpf_get_current_pid_tgid();
     e->pid = (__u32)(id >> 32);
     e->tid = (__u32)id;
+    if (target_pidns_ino != 0) {
+        struct bpf_pidns_info ns = {0};
+        if (bpf_get_ns_current_pid_tgid(target_pidns_dev, target_pidns_ino, &ns, sizeof(ns)) == 0) {
+            e->pid = ns.tgid; // pid as seen in the injector's namespace
+            e->tid = ns.pid;
+        }
+    }
     e->ssl = (__u64)ssl;
     bpf_ringbuf_submit(e, 0);
 

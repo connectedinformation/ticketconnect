@@ -1,0 +1,11 @@
+# ticket-agent — unprivileged authority container.
+FROM fedora:43 AS build
+RUN dnf -y install gcc make openssl-devel pkgconf-pkg-config && dnf clean all
+WORKDIR /src
+COPY ticket-agent/ ticket-agent/
+RUN make -C ticket-agent
+
+FROM fedora:43
+RUN dnf -y install openssl-libs && dnf clean all
+COPY --from=build /src/ticket-agent/ticket-agent /usr/local/bin/ticket-agent
+ENTRYPOINT ["/usr/local/bin/ticket-agent"]

@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <sys/un.h>
 #include <unistd.h>
 
@@ -122,6 +123,7 @@ static void handle_conn(int fd, Pool* pool)
     char group[64] = {0};
     if (!pool_get(pool, dest, &der, &der_len, &is_pqc, group, sizeof(group))) {
         send_status(fd, UDS_STATUS_MISS); // explicit miss, never a dropped conn
+        pool_maintain(pool, dest);        // refill so the next request can hit
         return;
     }
 
@@ -145,6 +147,7 @@ static void handle_conn(int fd, Pool* pool)
     write_all(fd, resp, total);
     free(resp);
     free(der);
+    pool_maintain(pool, dest); // top back up (this request consumed one)
 }
 
 int uds_serve(const char* path, Pool* pool)
@@ -220,6 +223,9 @@ int uds_get(const char* path, const char* dest, unsigned char** der, int* der_le
         close(fd);
         return -1;
     }
+    // Bound the wait: a slow/refilling agent must never stall the caller's loop.
+    struct timeval tv = {.tv_sec = 3, .tv_usec = 0};
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
     unsigned char req[UDS_REQ_HDR + UDS_DEST_MAX];
     req[0] = UDS_MAGIC;

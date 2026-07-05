@@ -1,0 +1,7 @@
+# Single-node kind cluster. kind nodes run the host kernel, so BTF
+# (/sys/kernel/btf/vmlinux) and uprobes/ptrace are available to the injector.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: ticketconnect
+nodes:
+  - role: control-plane

@@ -256,6 +256,13 @@ int main(int argc, char** argv)
     skel->rodata->freeze = 1;
     snprintf((char*)skel->rodata->exclude_comm, sizeof(skel->rodata->exclude_comm), "%s",
              exclude_comm);
+    // Ask the BPF program to report pids in our pid namespace, so /proc and ptrace
+    // line up even when nested (kind: hostPID reaches only the node's ns).
+    struct stat ns;
+    if (stat("/proc/self/ns/pid", &ns) == 0) {
+        skel->rodata->target_pidns_dev = ns.st_dev;
+        skel->rodata->target_pidns_ino = ns.st_ino;
+    }
     if (ssl_connect_bpf__load(skel)) {
         fprintf(stderr, "BPF load failed (need CAP_BPF/CAP_PERFMON)\n");
         return 1;

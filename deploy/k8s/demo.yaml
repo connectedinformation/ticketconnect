@@ -1,0 +1,60 @@
+# Demo workloads: a PQC server and an unmodified looping client. Neither is
+# ticketconnect — they are stand-ins for a real upstream and a legacy client.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-server
+  namespace: ticketconnect
+spec:
+  replicas: 1                  # single replica: one STEK, so tickets resume
+  selector:
+    matchLabels: { app: demo-server }
+  template:
+    metadata:
+      labels: { app: demo-server }
+    spec:
+      containers:
+        - name: server
+          image: ticketconnect/demo:dev
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/local/bin/demo-server"]
+          env:
+            - { name: PORT, value: "4433" }
+          ports:
+            - { containerPort: 4433 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-server
+  namespace: ticketconnect
+spec:
+  selector: { app: demo-server }
+  ports:
+    - { port: 4433, targetPort: 4433 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-client
+  namespace: ticketconnect
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: demo-client }
+  template:
+    metadata:
+      labels: { app: demo-client }
+    spec:
+      containers:
+        - name: client
+          image: ticketconnect/demo:dev
+          imagePullPolicy: IfNotPresent
+          # An unmodified, already-running looping TLS client. Session cache is
+          # off, so any RESUMED line is the injector's doing.
+          command:
+            - "/usr/local/bin/loop_client"
+            - "demo-server.ticketconnect.svc.cluster.local"
+            - "4433"
+            - "100000"
+            - "1000"
