@@ -11,6 +11,7 @@ vmlinux.h
 # component binaries (named after their dir)
 /ticket-agent/ticket-agent
 /injector/injector
+/demo/loop_client
 
 # test binaries
 **/test/test_*

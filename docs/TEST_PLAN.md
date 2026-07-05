@@ -128,4 +128,9 @@ Tier 3 is up through the real install (`make -C injector check`, all unprivilege
   it, victim uncorrupted (exits cleanly); `PTRACE_O_EXITKILL` → a tracer that dies
   mid-injection gets the target SIGKILLed, not left stopped. Unprivileged.
 
-Remaining: Tier 4 (container images, DaemonSet manifest, kind E2E).
+Tier 4 has begun on the host: `demo/run_host_demo.sh` runs the real `ticket-agent
+serve` + `injector` daemons against an **unmodified looping client** and shows the
+transition — full handshakes before the injector is deployed, PSK resumption
+(X25519MLKEM768) after, with no change to the client (DESIGN §13, pre-k8s).
+
+Remaining: container images, DaemonSet manifest, and the same demo on kind.

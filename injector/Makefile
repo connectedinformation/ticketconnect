@@ -12,10 +12,18 @@ TEST_BINS := test/test_remote test/test_symbols test/test_install test/test_fail
 BPF_DIR   := ../bpf
 BPF_FLAGS := $(shell pkg-config --cflags libbpf)
 BPF_LIBS  := $(shell pkg-config --libs libbpf)
+AGENT_DIR := ../ticket-agent
+BIN       := injector
 
 .PHONY: all clean test check
 
-all: test ## nothing to ship yet — build the tests
+all: $(BIN) ## build the injector daemon
+
+# The daemon links the BPF skeleton and the agent's UDS client; it does NOT link
+# OpenSSL — libssl functions are invoked remotely in the target, not called here.
+$(BIN): main.c $(LIB_SRC) $(AGENT_DIR)/uds.c $(AGENT_DIR)/pool.c $(BPF_DIR)/ssl_connect.skel.h
+	$(CC) $(CFLAGS) -I$(BPF_DIR) -I$(AGENT_DIR) $(BPF_FLAGS) -o $@ \
+		main.c $(LIB_SRC) $(AGENT_DIR)/uds.c $(AGENT_DIR)/pool.c $(BPF_LIBS)
 
 # Non-OpenSSL tests: pure ptrace/ELF, no libssl link.
 test/test_remote: test/test_remote.c $(LIB_SRC)
@@ -52,4 +60,4 @@ check-wireup: test/test_wireup ## capstone: detect+freeze -> install -> resume (
 PORT ?= 15443
 
 clean:
-	rm -f $(TEST_BINS)
+	rm -f $(BIN) $(TEST_BINS) test/test_wireup
