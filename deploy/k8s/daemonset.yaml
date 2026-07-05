@@ -1,0 +1,56 @@
+# The ticketconnect DaemonSet — the two-container, least-privilege split (DESIGN
+# §4). The agent (unprivileged) sources sessions and serves them over a node-local
+# UDS in a shared emptyDir; the injector (privileged, hostPID) detects SSL_connect
+# node-wide and installs sessions over ptrace.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ticketconnect
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: ticketconnect
+  namespace: ticketconnect
+spec:
+  selector:
+    matchLabels: { app: ticketconnect }
+  template:
+    metadata:
+      labels: { app: ticketconnect }
+    spec:
+      hostPID: true            # the injector must see & ptrace processes node-wide
+      containers:
+        - name: ticket-agent   # unprivileged authority
+          image: ticketconnect/agent:dev
+          imagePullPolicy: IfNotPresent
+          args:
+            - "serve"
+            - "/run/tc/agent.sock"
+            - "demo-server.ticketconnect.svc.cluster.local:4433"
+            - "-k"
+            - "--depth"
+            - "4"
+          volumeMounts:
+            - { name: tc-run, mountPath: /run/tc }
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: false
+        - name: injector       # privileged action arm
+          image: ticketconnect/injector:dev
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--agent"
+            - "/run/tc/agent.sock"
+            - "--dest"
+            - "demo-server.ticketconnect.svc.cluster.local:4433"
+            - "--scan"
+            - "--exclude-comm"
+            - "ticket-agent"
+          securityContext:
+            privileged: true   # CAP_BPF, CAP_PERFMON, CAP_SYS_PTRACE + relaxed LSM
+          volumeMounts:
+            - { name: tc-run, mountPath: /run/tc }
+      volumes:
+        - name: tc-run
+          emptyDir: {}

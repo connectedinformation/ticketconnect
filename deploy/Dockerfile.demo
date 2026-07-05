@@ -1,0 +1,13 @@
+# demo — the PQC s_server and the unmodified looping client, in one image
+# (OpenSSL 3.5 for X25519MLKEM768). Role chosen by the container's command.
+FROM fedora:43 AS build
+RUN dnf -y install gcc make openssl-devel pkgconf-pkg-config && dnf clean all
+WORKDIR /src
+COPY demo/ demo/
+RUN make -C demo
+
+FROM fedora:43
+RUN dnf -y install openssl && dnf clean all
+COPY --from=build /src/demo/loop_client /usr/local/bin/loop_client
+COPY deploy/demo-server.sh /usr/local/bin/demo-server
+RUN chmod +x /usr/local/bin/demo-server

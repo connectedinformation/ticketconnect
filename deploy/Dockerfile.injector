@@ -1,0 +1,19 @@
+# injector — privileged container (eBPF + ptrace). CO-RE: the BPF object is
+# compiled here against a pre-generated bpf/vmlinux.h and relocated at load time
+# against the node's own BTF (/sys/kernel/btf/vmlinux, mounted from the host).
+#
+# bpf/vmlinux.h must exist in the build context — generate it first with
+# `make -C bpf vmlinux.h` (the deploy script does this).
+FROM fedora:43 AS build
+RUN dnf -y install clang llvm libbpf-devel bpftool make gcc \
+        openssl-devel elfutils-libelf-devel pkgconf-pkg-config && dnf clean all
+WORKDIR /src
+COPY bpf/ bpf/
+COPY ticket-agent/ ticket-agent/
+COPY injector/ injector/
+RUN make -C injector
+
+FROM fedora:43
+RUN dnf -y install libbpf && dnf clean all
+COPY --from=build /src/injector/injector /usr/local/bin/injector
+ENTRYPOINT ["/usr/local/bin/injector"]
