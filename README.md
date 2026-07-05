@@ -1,5 +1,7 @@
 # ticketconnect
 
+[![CI](https://github.com/connectedinformation/ticketconnect/actions/workflows/ci.yml/badge.svg)](https://github.com/connectedinformation/ticketconnect/actions/workflows/ci.yml)
+
 Give a legacy TLS endpoint post-quantum key material — or a certificate-free
 resumed path — it cannot negotiate itself, without changing its code, its image,
 or its deployment.

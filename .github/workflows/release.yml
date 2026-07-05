@@ -1,0 +1,41 @@
+name: Release
+
+# CD: build and publish the three container images to GHCR on a version tag.
+# Deliberate — nothing publishes until you push a `v*` tag (or run it manually).
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: ghcr.io
+      OWNER: ${{ github.repository_owner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate bpf/vmlinux.h (CO-RE build input)
+        run: |
+          docker run --rm -v "$PWD/bpf:/out" fedora:43 sh -c \
+            'dnf -y install bpftool >/dev/null && \
+             bpftool btf dump file /sys/kernel/btf/vmlinux format c > /out/vmlinux.h'
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
+
+      - name: Build and push images
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          owner_lc=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
+          for comp in agent injector demo; do
+            img="$REGISTRY/$owner_lc/ticketconnect-$comp"
+            docker build -f "deploy/Dockerfile.$comp" -t "$img:$tag" -t "$img:latest" .
+            docker push "$img:$tag"
+            docker push "$img:latest"
+          done
