@@ -18,6 +18,30 @@
 // handshake proceeds. Left 0 for detection-only use.
 const volatile int freeze = 0;
 
+// Node-wide scan mode attaches a single uprobe to a shared libssl, so it would
+// also fire for the agent's own fetch handshakes — and freezing the agent while
+// the injector waits on it would deadlock. Exclude by comm (set before load).
+const volatile char exclude_comm[16] = {0};
+
+static __always_inline int excluded(void)
+{
+    if (exclude_comm[0] == 0) {
+        return 0;
+    }
+    char comm[16] = {0};
+    bpf_get_current_comm(&comm, sizeof(comm));
+#pragma unroll
+    for (int i = 0; i < 16; ++i) {
+        if (exclude_comm[i] == 0) {
+            return comm[i] == 0; // exact match up to the terminator
+        }
+        if (comm[i] != exclude_comm[i]) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 struct {
     __uint(type, BPF_MAP_TYPE_RINGBUF);
     __uint(max_entries, 1 << 16);
@@ -26,6 +50,9 @@ struct {
 SEC("uprobe/SSL_connect")
 int BPF_UPROBE(on_ssl_connect, void* ssl)
 {
+    if (excluded()) {
+        return 0;
+    }
     struct ssl_event* e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
     if (!e) {
         return 0;

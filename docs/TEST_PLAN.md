@@ -133,4 +133,11 @@ serve` + `injector` daemons against an **unmodified looping client** and shows t
 transition — full handshakes before the injector is deployed, PSK resumption
 (X25519MLKEM768) after, with no change to the client (DESIGN §13, pre-k8s).
 
-Remaining: container images, DaemonSet manifest, and the same demo on kind.
+The injector now has a **node-wide scan mode** (`--scan`) for the DaemonSet:
+discover every process with libssl mapped, attach one uprobe per distinct libssl
+file, and exclude the agent by comm in BPF (probing its own fetch handshakes would
+deadlock). Discovery is verified safely with `--dry-run` (no BPF, no freeze); the
+node-wide freeze+inject is the same proven mechanism and is exercised in the kind
+E2E (isolated, so freezing "all node TLS" is safe).
+
+Remaining: container images, DaemonSet manifest, and the demo on kind.

@@ -1,20 +1,26 @@
 // injector — the privileged daemon (DESIGN §5.2). Attaches the eBPF SSL_connect
 // uprobe (freeze armed), and for each detected connection pulls a session for the
-// configured destination from the agent's UDS and installs it over ptrace, then
+// configured destination from the agent's UDS, installs it over ptrace, and
 // releases the frozen thread. A miss falls back to normal TLS and is logged — no
 // silent downgrade.
 //
-//   injector --agent <sock> --dest <host:port> --pid <N> [--libssl <path>]
+//   injector --agent <sock> --dest <host:port> [--pid <N> | --scan] [--dry-run]
+//            [--exclude-comm <name>]
 //
-// v1 is single-destination (the pool's pre-warmed target); SNI-based multi-dest
-// lookup is a later refinement.
+// --pid targets one process (testing). --scan is node-wide (DaemonSet): discover
+// every process with libssl mapped and attach one uprobe per distinct libssl file,
+// excluding the agent by comm (probing its own fetch handshakes would deadlock).
+// --dry-run lists what --scan would attach, without loading BPF or freezing — safe
+// to run anywhere. v1 is single-destination; SNI-based lookup is a later refinement.
 
 #define _GNU_SOURCE
 
+#include <dirent.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <bpf/libbpf.h>
@@ -37,6 +43,25 @@ struct daemon_ctx {
     const char* dest;
 };
 
+// Distinct libssl files we have attached to (dedup by device+inode across pods).
+struct attached {
+    unsigned long dev;
+    unsigned long ino;
+    struct bpf_link* link;
+};
+static struct attached g_att[256];
+static int g_natt = 0;
+
+static int seen(unsigned long dev, unsigned long ino)
+{
+    for (int i = 0; i < g_natt; ++i) {
+        if (g_att[i].dev == dev && g_att[i].ino == ino) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static int find_libssl_for_pid(pid_t pid, char* out, size_t cap)
 {
     char maps[64];
@@ -56,6 +81,82 @@ static int find_libssl_for_pid(pid_t pid, char* out, size_t cap)
     }
     fclose(f);
     return -1;
+}
+
+static void read_comm(pid_t pid, char* out, size_t cap)
+{
+    char path[64];
+    snprintf(path, sizeof(path), "/proc/%d/comm", pid);
+    out[0] = '\0';
+    FILE* f = fopen(path, "r");
+    if (f) {
+        if (fgets(out, (int)cap, f)) {
+            out[strcspn(out, "\n")] = '\0';
+        }
+        fclose(f);
+    }
+}
+
+// Scan /proc for processes with libssl mapped; for each distinct libssl file,
+// either attach a node-wide uprobe (real) or just report it (dry). Returns the
+// number of newly discovered libssl files.
+static int scan(struct bpf_program* prog, pid_t self, int dry)
+{
+    DIR* d = opendir("/proc");
+    if (!d) {
+        return -1;
+    }
+    int fresh = 0;
+    struct dirent* de;
+    while ((de = readdir(d)) != NULL) {
+        char* end = NULL;
+        long pid = strtol(de->d_name, &end, 10);
+        if (*end != '\0' || pid == self) {
+            continue;
+        }
+
+        char path[512];
+        if (find_libssl_for_pid((pid_t)pid, path, sizeof(path)) != 0) {
+            continue;
+        }
+        char rooted[600];
+        snprintf(rooted, sizeof(rooted), "/proc/%ld/root%s", pid, path);
+        struct stat st;
+        const char* use = rooted;
+        if (stat(rooted, &st) != 0) {
+            if (stat(path, &st) != 0) {
+                continue;
+            }
+            use = path;
+        }
+        if (seen((unsigned long)st.st_dev, (unsigned long)st.st_ino)) {
+            continue;
+        }
+
+        char comm[64];
+        read_comm((pid_t)pid, comm, sizeof(comm));
+        if (dry) {
+            printf("would attach: %s (inode %lu, first seen via pid %ld comm=%s)\n", use,
+                   (unsigned long)st.st_ino, pid, comm);
+            g_att[g_natt++] =
+                (struct attached){(unsigned long)st.st_dev, (unsigned long)st.st_ino, NULL};
+        }
+        else {
+            LIBBPF_OPTS(bpf_uprobe_opts, uo, .func_name = "SSL_connect");
+            struct bpf_link* link = bpf_program__attach_uprobe_opts(prog, -1, use, 0, &uo);
+            if (link) {
+                g_att[g_natt++] =
+                    (struct attached){(unsigned long)st.st_dev, (unsigned long)st.st_ino, link};
+                fprintf(stderr, "attached node-wide uprobe: %s\n", use);
+            }
+        }
+        ++fresh;
+        if (g_natt >= (int)(sizeof(g_att) / sizeof(g_att[0]))) {
+            break;
+        }
+    }
+    closedir(d);
+    return fresh;
 }
 
 static int on_event(void* ctx, void* data, size_t len)
@@ -79,7 +180,6 @@ static int on_event(void* ctx, void* data, size_t len)
         free(der);
     }
     else {
-        // No session: fall back to normal TLS, but surface it (no silent downgrade).
         fprintf(stderr, "pid=%u dest=%s -> MISS, falling back to normal TLS (event)\n", e->pid,
                 d->dest);
     }
@@ -93,7 +193,10 @@ int main(int argc, char** argv)
     const char* agent_sock = NULL;
     const char* dest = NULL;
     const char* libssl = NULL;
-    pid_t target = -1;
+    const char* exclude_comm = "ticket-agent";
+    pid_t target = 0;
+    int do_scan = 0;
+    int dry_run = 0;
 
     for (int i = 1; i < argc; ++i) {
         if (!strcmp(argv[i], "--agent") && i + 1 < argc) {
@@ -108,25 +211,42 @@ int main(int argc, char** argv)
         else if (!strcmp(argv[i], "--libssl") && i + 1 < argc) {
             libssl = argv[++i];
         }
+        else if (!strcmp(argv[i], "--exclude-comm") && i + 1 < argc) {
+            exclude_comm = argv[++i];
+        }
+        else if (!strcmp(argv[i], "--scan")) {
+            do_scan = 1;
+        }
+        else if (!strcmp(argv[i], "--dry-run")) {
+            dry_run = 1;
+            do_scan = 1;
+        }
         else {
             fprintf(stderr,
-                    "usage: %s --agent <sock> --dest <host:port> --pid <N> [--libssl <path>]\n",
+                    "usage: %s --agent <sock> --dest <host:port> [--pid N | --scan] [--dry-run]\n",
                     argv[0]);
             return 2;
         }
     }
-    if (!agent_sock || !dest || target <= 0) {
-        fprintf(stderr, "missing --agent/--dest/--pid\n");
+    if (target <= 0 && !do_scan) {
+        fprintf(stderr, "specify --pid <N> or --scan\n");
         return 2;
     }
 
-    char libssl_buf[512];
-    if (!libssl) {
-        if (find_libssl_for_pid(target, libssl_buf, sizeof(libssl_buf)) != 0) {
-            fprintf(stderr, "no libssl mapped in pid %d\n", target);
-            return 1;
-        }
-        libssl = libssl_buf;
+    pid_t self = getpid();
+
+    // Dry run: discover and report only. No BPF, no freeze — safe anywhere.
+    if (dry_run) {
+        printf("injector --dry-run: discovering libssl processes (excluding comm '%s')\n",
+               exclude_comm);
+        int n = scan(NULL, self, 1);
+        printf("%d distinct libssl file(s) would be probed\n", n);
+        return 0;
+    }
+
+    if (!agent_sock || !dest) {
+        fprintf(stderr, "missing --agent/--dest\n");
+        return 2;
     }
 
     struct ssl_connect_bpf* skel = ssl_connect_bpf__open();
@@ -134,18 +254,35 @@ int main(int argc, char** argv)
         return 1;
     }
     skel->rodata->freeze = 1;
+    snprintf((char*)skel->rodata->exclude_comm, sizeof(skel->rodata->exclude_comm), "%s",
+             exclude_comm);
     if (ssl_connect_bpf__load(skel)) {
         fprintf(stderr, "BPF load failed (need CAP_BPF/CAP_PERFMON)\n");
         return 1;
     }
 
-    LIBBPF_OPTS(bpf_uprobe_opts, uopts, .func_name = "SSL_connect");
-    skel->links.on_ssl_connect =
-        bpf_program__attach_uprobe_opts(skel->progs.on_ssl_connect, target, libssl, 0, &uopts);
-    if (!skel->links.on_ssl_connect) {
-        fprintf(stderr, "uprobe attach failed on %s\n", libssl);
-        ssl_connect_bpf__destroy(skel);
-        return 1;
+    if (target > 0) {
+        char libssl_buf[512];
+        if (!libssl) {
+            if (find_libssl_for_pid(target, libssl_buf, sizeof(libssl_buf)) != 0) {
+                fprintf(stderr, "no libssl mapped in pid %d\n", target);
+                return 1;
+            }
+            libssl = libssl_buf;
+        }
+        LIBBPF_OPTS(bpf_uprobe_opts, uo, .func_name = "SSL_connect");
+        skel->links.on_ssl_connect =
+            bpf_program__attach_uprobe_opts(skel->progs.on_ssl_connect, target, libssl, 0, &uo);
+        if (!skel->links.on_ssl_connect) {
+            fprintf(stderr, "uprobe attach failed on %s\n", libssl);
+            return 1;
+        }
+        fprintf(stderr, "injector: watching pid %d (%s)\n", target, libssl);
+    }
+    else {
+        int n = scan(skel->progs.on_ssl_connect, self, 0);
+        fprintf(stderr, "injector: node-wide, %d libssl file(s) probed (excluding '%s')\n", n,
+                exclude_comm);
     }
 
     struct daemon_ctx dctx = {.agent_sock = agent_sock, .dest = dest};
@@ -154,17 +291,26 @@ int main(int argc, char** argv)
 
     signal(SIGINT, on_signal);
     signal(SIGTERM, on_signal);
-    fprintf(stderr, "injector: watching pid %d (%s) for dest %s via agent %s\n", target, libssl,
-            dest, agent_sock);
 
+    int since_scan = 0;
     while (g_running) {
         int n = ring_buffer__poll(rb, 200);
         if (n < 0 && n != -4 /* EINTR */) {
             break;
         }
+        // Node-wide: periodically pick up newly-started libssl files (new pods).
+        if (do_scan && ++since_scan >= 25) {
+            scan(skel->progs.on_ssl_connect, self, 0);
+            since_scan = 0;
+        }
     }
 
     ring_buffer__free(rb);
+    for (int i = 0; i < g_natt; ++i) {
+        if (g_att[i].link) {
+            bpf_link__destroy(g_att[i].link);
+        }
+    }
     ssl_connect_bpf__destroy(skel);
     return 0;
 }
