@@ -99,9 +99,17 @@ Tiers 1–2 are wired for the agent's authority role (`ticket-agent/test/`, run 
   pool over a Unix socket) and a `get` client, and confirms the UDS-delivered
   bytes are a real resumable session (`Resumption PSK` present).
 
-Tier 3 has begun: `injector/test/test_remote` proves the ptrace remote-call
-primitive (calls `getpid()` inside a spawned child, checks the return, and
-repeats to confirm the target is restored intact). It traces its own child, so it
-is unprivileged and CI-safe on Linux/x86-64. Symbol resolution, remote
-`mmap`/`process_vm_writev`, the real `d2i_SSL_SESSION`/`SSL_set_session` install,
-and eBPF detection land next; Tier 4 (kind E2E) after.
+Tier 3 is up through the real install (`make -C injector check`, all unprivileged
+— each traces its own child):
+
+- `test_remote` — the ptrace remote-call primitive (call `getpid()` in a child,
+  check the return, repeat to confirm the target is restored intact).
+- `test_symbols` — runtime `.dynsym` resolution (resolve `getpid`/`mmap`, call the
+  resolved `getpid`, resolve across a forked target, fail closed on unknowns).
+- `test_install` — the **real install end to end**: the agent fetches a genuine
+  session, the injector installs it into a live libssl victim via public APIs
+  (remote `mmap` → `process_vm_writev` → `d2i_SSL_SESSION` → `SSL_set_session` →
+  `SSL_SESSION_free`), and the victim's `SSL_connect` resumes (`SSL_session_reused`).
+
+Remaining: the eBPF `SSL_connect` uprobe (to supply the live `SSL*` instead of the
+test's hand-off), the fail-closed suite (Tier 3 negatives), and Tier 4 (kind E2E).
