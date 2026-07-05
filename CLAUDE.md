@@ -4,11 +4,14 @@ Guidance for Claude Code in the ticketconnect repository.
 
 ## Project Overview
 
-ticketconnect gives a legacy TLS client post-quantum key material it cannot
-negotiate itself, without changing its code, image, or deployment. A PQC-capable
-node agent performs the X25519MLKEM768 handshake on the client's behalf and
-installs the resulting TLS 1.3 resumption session into the client, so the
-client's own next connection resumes on a quantum-safe PSK — off the data path.
+ticketconnect gives a legacy TLS *endpoint* (client or server) post-quantum key
+material — or a certificate-free resumed path — it cannot negotiate itself,
+without changing its code, image, or deployment. An agent performs the handshake
+the endpoint cannot (or need not) perform and installs the resulting TLS 1.3
+resumption session into it, so the endpoint's own next connection resumes on a
+PQC-rooted PSK — off the data path. The substance is the off-path
+session-acquisition-and-injection **primitive**; stock OpenSSL 3.5 supplies the
+PQC for free, so PQC is the marquee use case, not the product.
 
 **Clean-room reimplementation.** Do NOT import code, docs, or git history from
 any prior tree (`~/Projects/ticketconnect-legacy`, `~/Projects/TicketConnect.0`).
@@ -19,23 +22,37 @@ Full spec: [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Architecture
 
-DaemonSet node agent, two containers (least privilege):
+**One authority, two delivery planes** — full detail in `docs/DESIGN.md` §5 and
+`docs/adr/0001-two-plane-architecture.md`. The mechanism is chosen per connection
+by **injectability** (can we `ptrace` the endpoint): `inject-both` / `inject-one`
+/ `inject-none`. East/north-south = traffic direction only, never a proxy for
+injectability.
 
-- **ticket-agent** (unprivileged): X25519MLKEM768 handshakes via stock OpenSSL
-  3.5; per-destination resumption-session pool; serves sessions + PQC provenance
-  over a node-local Unix socket.
-- **injector** (privileged: `CAP_BPF`, `CAP_PERFMON`, `CAP_SYS_PTRACE`,
-  `hostPID`): eBPF CO-RE uprobes for detection/timing; ptrace performs the
-  install via **public OpenSSL APIs only** (remote `d2i_SSL_SESSION` +
-  `SSL_set_session`) — never private struct offsets. This rule makes the
-  memory-corruption bug class *unrepresentable*.
+- **Authority — `ticket-agent`** (unprivileged): X25519MLKEM768 handshakes via
+  stock OpenSSL 3.5; sources sessions by **relay** or **mint**; holds the
+  per-destination session **pool** (freshness, single-use headroom); serves
+  sessions + PQC provenance over a node-local Unix socket. All network-facing PQC
+  code lives here.
+- **Plane 1 — injection (off-path). `injector`** (privileged: `CAP_BPF`,
+  `CAP_PERFMON`, `CAP_SYS_PTRACE`, `hostPID`): eBPF CO-RE uprobes for
+  detection/timing; ptrace installs the session (client) or STEK (server) via
+  **public OpenSSL APIs only** (remote `d2i_SSL_SESSION` + `SSL_set_session`) —
+  never private struct offsets. This rule makes the memory-corruption bug class
+  *unrepresentable*. Packaged as the DaemonSet.
+- **Plane 2 — fronting (on-path). `gateway` + `frontdesk`** (deferred, gated):
+  for `inject-none` peers only — `gateway` steers by ClientHello, `frontdesk`
+  terminates a handshake to issue a ticket. Bounded to ticket issuance; packaged
+  as a Deployment/Service. `router`/`gateway`/`xdp_router`/`clienthello_router`
+  from the prior tree collapse into one `gateway` (they were 4 dataplane impls).
 
-Modes: **v1 = relay** (the upstream mints the ticket; delivers resumption +
-attested PQC provenance). **Authority mode** (agent owns the STEK, mints tickets,
-embeds metadata, cert-free path) is deferred.
+Modes: **v1 = relay** (upstream mints the ticket; Plane 1, inject-one client;
+delivers resumption + attested PQC provenance). **Authority mode** (agent owns
+the STEK, mints tickets, embeds metadata, cert-free path) unlocks server-side
+injection and the fronting plane — deferred. Build order in DESIGN.md §12.
 
-Boundary: must **not** depend on the tlslane project's closed code. Self-contained
-on stock OpenSSL 3.5.
+Boundary: must **not** depend on the tlslane project's closed code; self-contained
+on stock OpenSSL 3.5. The on-path fronting plane is the closest brush with
+tlslane — keep it bounded and gated (re-check DESIGN.md §11 before investing).
 
 ## Build
 
@@ -59,14 +76,18 @@ Skeleton — see the top-level `Makefile` (`make help`). Components live in
 - Comments minimal; code self-explanatory. Cite RFC sections (RFC 8446 TLS 1.3,
   RFC 5077 tickets) where wire format matters.
 
-## Security Invariants (DESIGN.md §8)
+## Security Invariants (DESIGN.md §10)
 
 - Enforce `psk_dhe_ke`. Never `psk_ke`, never 0-RTT.
 - No silent downgrade: a miss/failure falls back to normal TLS **and emits an
   event**.
 - ptrace acts only on verified targets, fail-closed; `PTRACE_O_EXITKILL` always.
+- Server-side injection is *not* risk-symmetric with client-side (long-lived
+  shared STEK, live-traffic process) — treat with authority-mode STEK cautions.
 
 ## Non-goals
 
-On-path proxy / service mesh; non-OpenSSL stacks; ticket pooling; SaaS control
-plane; 0-RTT.
+General on-path traffic proxy / service mesh (the fronting plane is a *bounded*
+ticket issuer, not a traffic splicer); non-OpenSSL stacks; **cluster-wide** ticket
+pooling (the per-destination freshness pool IS in scope); SaaS control plane;
+0-RTT.

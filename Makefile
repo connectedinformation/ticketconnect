@@ -1,13 +1,17 @@
-# ticketconnect — top-level build (skeleton)
+# ticketconnect — top-level build
 
-.PHONY: all clean help
+COMPONENTS := ticket-agent
 
-all: ## Build all components (TBD)
-	@echo "TODO: build ticket-agent, injector, bpf"
+.PHONY: all clean help $(COMPONENTS)
+
+all: $(COMPONENTS) ## Build all buildable components
+
+$(COMPONENTS): ## Build a single component
+	$(MAKE) -C $@
 
 clean: ## Remove build artifacts
-	@echo "TODO: clean"
+	@for c in $(COMPONENTS); do $(MAKE) -C $$c clean; done
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | sort \
-		| awk 'BEGIN{FS=":.*## "}{printf "  %-10s %s\n", $$1, $$2}'
+		| awk 'BEGIN{FS=":.*## "}{printf "  %-14s %s\n", $$1, $$2}'
