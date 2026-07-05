@@ -123,4 +123,9 @@ Tier 3 is up through the real install (`make -C injector check`, all unprivilege
   its *own* `SSL_connect` resumes on the PSK. The victim never pauses at the call
   or hands off its pointer. Needs BPF privilege (`make -C injector check-wireup`).
 
-Remaining: the fail-closed suite (Tier 3 negatives) and Tier 4 (kind E2E).
+- `injector/test/test_failclosed` — the **fail-closed negatives** (DESIGN §7):
+  unresolved symbol set → never seized, target alive; garbage DER → `d2i` rejects
+  it, victim uncorrupted (exits cleanly); `PTRACE_O_EXITKILL` → a tracer that dies
+  mid-injection gets the target SIGKILLed, not left stopped. Unprivileged.
+
+Remaining: Tier 4 (container images, DaemonSet manifest, kind E2E).

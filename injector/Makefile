@@ -7,7 +7,7 @@ SSL_FLAGS := $(shell pkg-config --cflags openssl)
 SSL_LIBS  := $(shell pkg-config --libs openssl)
 
 LIB_SRC   := remote.c symbols.c install.c
-TEST_BINS := test/test_remote test/test_symbols test/test_install
+TEST_BINS := test/test_remote test/test_symbols test/test_install test/test_failclosed
 
 BPF_DIR   := ../bpf
 BPF_FLAGS := $(shell pkg-config --cflags libbpf)
@@ -24,8 +24,11 @@ test/test_remote: test/test_remote.c $(LIB_SRC)
 test/test_symbols: test/test_symbols.c $(LIB_SRC)
 	$(CC) $(CFLAGS) -o $@ $< $(LIB_SRC)
 
-# Install test links libssl for its in-process victim.
+# These link libssl for their in-process victims.
 test/test_install: test/test_install.c $(LIB_SRC)
+	$(CC) $(CFLAGS) $(SSL_FLAGS) -o $@ $< $(LIB_SRC) $(SSL_LIBS)
+
+test/test_failclosed: test/test_failclosed.c $(LIB_SRC)
 	$(CC) $(CFLAGS) $(SSL_FLAGS) -o $@ $< $(LIB_SRC) $(SSL_LIBS)
 
 test: $(TEST_BINS) ## build the test binaries
@@ -40,6 +43,7 @@ test/test_wireup: test/test_wireup.c $(LIB_SRC) $(BPF_DIR)/ssl_connect.skel.h
 check: $(TEST_BINS) ## run injector tests (own child; unprivileged)
 	@echo "== remote-call primitive ==" && ./test/test_remote
 	@echo "== symbol resolution =="      && ./test/test_symbols
+	@echo "== fail-closed (negatives) ==" && ./test/test_failclosed
 	@echo "== real install (agent -> injector -> resume) ==" && PORT=$(PORT) bash test/run.sh
 
 check-wireup: test/test_wireup ## capstone: detect+freeze -> install -> resume (sudo)
