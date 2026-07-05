@@ -1,0 +1,16 @@
+# build artifacts
+*.o
+*.a
+*.so
+*.bpf.o
+/build/
+**/build/
+vmlinux.h
+
+# tooling
+compile_commands.json
+.cache/
+
+# editor
+*.swp
+*~
