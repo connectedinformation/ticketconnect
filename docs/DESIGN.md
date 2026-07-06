@@ -221,6 +221,42 @@ trap) is generic and offset-independent — the well-trodden `gdb call` / Frida 
 **Fail-closed guards:** unknown/uncertain target → skip, never poke. Verify the resolved symbol set
 before any call. `PTRACE_O_EXITKILL` so a dead agent never leaves a process stopped.
 
+### 7.1 Presumptions on the target program
+
+The load-bearing property: **the endpoint calls no ticketconnect API, no resumption-specific API, and
+no PQC-specific API to be injected.** The "trigger" is the *stock OpenSSL handshake entry the program
+already calls* — `SSL_connect` (client) or the `SSL_accept`/`SSL_CTX` setup path (server). We ride
+that ordinary call from outside. No SDK, no opt-in, no config flag, no cooperation, no awareness. This
+is the whole point of "off-path, without changing the endpoint," so the assumptions it *does* rest on
+must be stated plainly.
+
+**Client side (v1 — inject-one, client).** Trigger = the client's own `SSL_connect`; each call is one
+injection window (uprobe fires at entry, before the ClientHello). Presumes:
+
+- **OpenSSL, dynamically linked.** The uprobe binds the exported `SSL_connect` in `libssl.so`. A
+  statically-linked client, or a non-OpenSSL stack (BoringSSL, rustls, GnuTLS, Go crypto/tls), calls
+  a different entry and does not fire — that peer is `inject-none` (see §3), the fronting plane's case.
+- **It initiates connections.** A client that opens one connection and never another gives exactly one
+  shot; a looping/reconnecting client gives one per `SSL_connect`.
+- **It is an ordinary resuming client** — one whose `SSL_connect`, given a session set on its `SSL`,
+  attempts PSK resumption (stock OpenSSL behavior). It need **not** enable its own session cache, call
+  `SSL_set_session`, load a ticket, or know anything about PQC; the injector does all of that into it.
+- **Injectable:** ptrace-able, co-resident on the node, injector holds `CAP_SYS_PTRACE`; x86-64.
+
+**Server side (deferred — authority mode, §8.2).** The model is *not* per-connection. The STEK is
+installed **once** into the server's long-lived `SSL_CTX` via public `SSL_CTX_set_tlsext_ticket_keys`
+(ctrl 59); thereafter every ticket the server mints/accepts uses a key the authority controls. The
+detection target is *locating the server's `SSL_CTX`* (off its accept/setup path), not catching each
+connection. Presumes an OpenSSL server, dynamically linked, running a normal accept loop with TLS 1.3
+tickets enabled (the default `NewSessionTicket` path); same injectability constraints. It, too, calls
+no special API. The asymmetry is deliberate and gated: a per-`SSL`, fail-to-"no-upgrade" client
+install vs. a long-lived, **shared** key in a live-traffic process (see §10, §8.2).
+
+**Independent of the API-call trigger:** the destination must be doing **TLS 1.3 with tickets in
+play**, and the pool must be warm. First connection to a cold destination has nothing to inject → it
+completes as a normal classical handshake and emits an event (§9, no silent downgrade); injection
+makes the *next* one resume.
+
 ## 8. Two operating modes (who owns the STEK decides everything)
 
 The ticket's contents are defined by whoever mints it. That single fact splits the product, and it
